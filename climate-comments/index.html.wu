@@ -1,0 +1,23 @@
+writeup v0
+
+# Climate comments
+
+This demo originally downloaded data from <https://catalog.data.gov/dataset/climate-change-adaptation-task-force>. However since President Trump took office the dataset has disappeared. However because Muck had cached a copy, I was able to save and commit the dataset to this repository as 'climate-comments-data.json'. The original URL was `https://open.whitehouse.gov/api/views/8i76-ywi6/rows.json?accessType=DOWNLOAD`.
+
+# Comment Sentiment
+
+<embed: comment-sentiment.svg>
+
+
+# Top Submitted comments
+
+Here are all comments that were submitted more than once. As you can see, some were form comments submitted many times.
+
+<embed: repeat-comments.csv>
+
+
+# Unique Comments
+
+Here are all the comments that were submitted exactly once.
+
+<embed: unique-comments.csv>
