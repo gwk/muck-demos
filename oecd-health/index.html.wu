@@ -1,0 +1,153 @@
+writeup v0
+© 2017 George King. All rights reserved.
+
+# OECD Life Expectancy vs Private Health Costs
+
+This example attempts to reproduce the Guardian Datablog article <https://www.theguardian.com/us-news/datablog/2017/jul/02/us-healthcare-broken-system-one-chart America's broken healthcare system – in one simple chart> using the <https://github.com/gwk/muck Muck> build system.
+
+Creating a Muck project is as simple as creating an empty source document - in this case, `index.html.wu`. Simply run `muck -serve` from the project directory, and it will produce `index.html` from `index.html.wu`, generating any additional dependencies on an as-needed basis.
+
+If you look at the implementation of this project, you will see that all of the code boxes in this page are just references to the scripts that generate the actual results - change the code and Muck will bring the entire project up to date. This allows for an iterative style of development, and makes it easier to document the technical process. Most news articles would not show the code of course, but one can easily imagine producing both an article for publication as well as a companion "How it was made" post in tandem.
+
+
+# The Data
+
+The article cites as its data source <http://stats.oecd.org/index.aspx?DataSetCode=HEALTH_STAT>. That link points to the interactive explorer for the entire OECD health data repository, but we can guess that the numbers came from the subsections located at `Health → Health expenditure and financing → Health expenditure and financing` and `Health → Health Status → Life Expectancy`.
+
+Navigating to each of these sections updates the dynamic spreadsheet at the center of the page. To obtain the datasets:
+* For each of the sections named above;
+* From the "Export" dropdown menu at the top of the middle pane, select "Text File (CSV)";
+* Press the "Download" button (this may take a few seconds before triggering a download in the browser).
+* Note that the CSV exports do not appear to reflect the settings chosen in the dynamic spreadsheet, just the table selection in the left pane; the Excel exports have different behavior.
+
+At this time it does not appear possible to link to these CSV files directly. For the purposes of this demo, the downloaded files have been renamed `health-expenditure-and-financing.csv` (109MB) and `life-expectancy.csv` (4MB) respectively, and checked into the git repository, so that readers can run the code without going through the download process.
+
+
+# Exploration
+
+Since the data consists of multiple tables it will be convenient to use relational queries. As a first step we will create an SQLite database from the two tables using a convenient little tool called <https://github.com/gwk/csv-to-sqlite csv-to-sqlite>. This is nice because it automatically infers column names and affinities (data types) for us. (Alternatively we could use plain Python, the sqlite3 shell's <https://sqlite.org/cli.html#csv_import CSV features> or <https://sqlite.org/csv.html CSV virtual table extension>, or CSVKit's <https://csvkit.readthedocs.io/en/1.0.2/scripts/csvsql.html csvsql>).
+
+<embed: titled=yes data.sqlite3.sh>
+
+This command creates a database of two tables, 'expenditures' and 'expectancies'. Now that we have the data in database format, we can easily query it. First we query the schema:
+<embed: titled=yes schema.txt.sql>
+
+The output shows us the structure of each table:
+<embed: titled=yes schema.txt>
+
+Both tables are structured so that some columns form pairs consisting of a short coded version followed by a longer human-readable version. Browsing through the tables it is clear that there are many more measurements than what is presented in the original article. We want to find the data points that match to the units presented in the original, namely "private health spending per person in 2016 (US$)" and "average life expectancy at birth".
+
+We can see the different units of measure in each table by selecting distinct values for just the columns that specify the nature of the measurements (I identified these by looking at a sample of the data and then querying just the columns that looked relevant).
+
+
+## Health Expenditures
+
+For expenditures, there are several column pairs indicating "nature of measurement".
+
+
+### HF / Financing_scheme
+<embed: titled=yes expenditures-schemes.csv.sql>
+<embed: titled=yes expenditures-schemes.csv>
+
+The only candidate for "private expenditure" seems to be "Voluntary schemes/household out-of-pocket payments". The table in the article also shows "Total expenditure, incl. government," which probably came from "All financing schemes".
+
+
+### HC / Function
+<embed: titled=yes expenditures-functions.csv>
+
+Clearly we want "Current expenditure on health (all functions)".
+
+
+### HP / Provider
+<embed: titled=yes expenditures-providers.csv>
+
+Similarly, the article probably used "All providers".
+
+
+### Measure and Unit
+
+Choice of measure and unit is trickier. Let's query the remaining relevant columns together to try to get a sense of what "measure" and "unit" mean.
+
+<embed: titled=yes expenditures-measures-units.csv.sql>
+(Note: the `_1` suffix was added to the `Measure` column name by `csv-to-sqlite` to make the names distinct in SQLite, which is case-insensitive).
+
+<embed: titled=yes expenditures-measures-units.csv>
+
+The article clearly uses per capita measurement, and the statement "In 2016, the average American spent $4,571 on their health" suggests that we want actual dollars in 2016. "Constant prices, OECD Base Year" seems to refer to 2010, so "Current prices" seems to be the better guess. PPP stands for <https://en.wikipedia.org/wiki/Purchasing_power_parity> and is an economic theory that normalizes purchasing power to currencies. This seems like a reasonable choice, but at this point I'm out of my depth; if this were original research I would go back to the OECD site to read the documentation.
+
+Perhaps we can eliminate choices by requiring US Dollars expressed in single dollars (as opposed to millions).
+
+<embed: titled=yes expenditures-measures-usd.csv.sql>
+<embed: titled=yes expenditures-measures-usd.csv>
+
+This still leaves us with the choice between current or constant prices, and PPP or non-PPP. Since we are just trying to figure out what the original author did, we can cheat and go looking for values matching the top four rows in the original table. Note that I had to expand the ranges several times until I got sufficient results for countries other than the United States.
+
+<embed: titled=yes expenditures-measures-cheat.csv.sql>
+<embed: titled=yes expenditures-measures-cheat.csv>
+
+We see the USA value as stated exactly in the article, using constant prices. This is encouraging, and suggests that we simply have to choose whether to use PPP. The only hits for constant price are Australia and Canada, using PPP. Our methodology here is questionable since we just picked an arbitrary "fudge factor" of +/- $500, but since this is a technical demonstration rather than a serious audit of the original we can move on. It is worth taking a moment though to speculate as to why our numbers are different. Since the USA value remains exact, it perhaps the discrepancy is due to changing exchange rates. This explanation is rather unsatisfactory though, because out of all the measure descriptions, I would expect costs for 2016 expressed in 2010 dollars not to change once calculated, so perhaps we are still missing something.
+
+In summary, we will use `HF == 'HF2HF3'`, `HC == 'HCTOT'`, `HP == 'HPTOT'`, and `Measure == 'VRPPPR'`.
+
+## Life Expectancy
+
+For life expectancies, the task is much simpler.
+
+### VAR / Variable
+
+<embed: titled=yes expectancies-variables.csv.sql>
+<embed: titled=yes expectancies-variables.csv>
+
+We will use `EVIETOTA` / `Total population at birth`.
+
+
+### UNIT / Measure
+
+<embed: titled=yes expectancies-measures.csv>
+Lastly, `EVIDUREV` / `Years` is the obvious choice.
+
+
+# The Table
+
+Now that we know which subset of the data we want, we can formulate a `JOIN` query to recreate the table. We use two `LEFT JOIN` clauses to effectively add additional columns to the query. First we join `expenditures` against itself, distinguishing between the two with the names `privateExpend` and `totalExpend`. This allows us to select the separate `HF2HF3` (private) and `HFTOT` (total) values, pair them by country, and show them in the same row. Then we join `expectancies` to do the same for the life expectancy values.
+
+Note: the first time I ran the query it used the 2016 data for life expectancies, and I found that only Chile and Mexico are listed for that year. Dropping back to 2015 gives complete results that matches the original table exactly.
+
+<embed: titled=yes table.csv.sql>
+<embed: titled=yes table.csv>
+
+
+# The Visualization
+
+The chart in the article is not a typical chart, so let's start off by rendering a more conventional XY scatterplot. Because we are going to try several visualizations, we will first factor out the data loading logic into a tiny python module (I actually did this after some amount of experimentation, for the sake of deduplicating code and clear presentation).
+
+<embed: titled=yes chart_data.py>
+
+Let's build a scatterplot with <https://github.com/wireservice/leather leather>, a simple charting library for Python:
+
+<embed: titled=yes scatterplot-leather.svg.py>
+<embed: titled=yes scatterplot-leather.svg>
+
+Looks good, but there does not appear to be any way to get text labels on the dots. Let's try <https://pygal.org pygal> instead:
+
+<embed: titled=yes scatterplot-pygal.svg.py>
+<embed: titled=yes scatterplot-pygal.svg>
+
+This gives us labels, but with no way to adjust the offsets it is very hard to read (furthermore, pygal creates interactive popups for the datapoints, but these don't work when the SVG is embedded into our HTML document). A little googling suggests that <http://matplotlib.org matplotlib> can do it, but installing that library can be quite onerous so we won't use it here.
+
+Let's try to reproduce the original visualization. It is atypical because the lines do not represent data series. Rather, each line represents a single `(expenditure, expectancy)` datapoint, and the slope of the line is what conveys magnitude visually.
+
+TODO.
+
+
+# Conclusion
+
+This demo shows how a data journalist can use Muck to produce a complete article, including charts and tables. The entire reproduction was constructed with Muck, SQLite, and the csv-to-sqlite utility, plus a text editor, a terminal program (to run Muck), and a browser to inspect the results.
+
+This work also shows that by using Muck data journalists can make their projects completely reproducible. To guarantee that everyone sees the same results, I checked the downloaded data into the repository. The OECD terms and conditions are <http://www.oecd.org/termsandconditions/ here>. Note that while they grant permission to redistribute the data, they also state that they might not actually own portions of it, and claim that it is the user's responsibility to make such determinations. Doing so is really not so feasible for an individual like myself, and given the complexity of modern intellectual property law, republishing anything is something of a calculated risk.
+
+Alternatively I could have left intrepid readers to download the OECD data themselves, but it could change in the future, undergo a change in format that might break our code, or even become unavailable entirely (the license makes disclaimers for each of these possibilities).
+
+The fact that our numbers only partially match those in the original article suggests that the data has indeed changed in the intervening three months, although we cannot be sure. In any case, the demonstration suggests just how difficult reproducible data journalism really is. If the dataset were proprietary, we would not have the option of publishing a copy at all.
+
+Finally, I would like to note that this project is neither a critique nor endorsement of the original article. While I wish the author had provided more specific information about which data was used, I suspect that the core problem has to do with a change in the dataset. The discrepancy between years queried for expenditures vs expectancies is entirely pragmatic, understandable, and in all likelihood negligible. Whether or not the comparison between private health expenditures and life expectancy truly summarizes the nature of the US health care problem is another question entirely.
