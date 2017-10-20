@@ -1,13 +1,14 @@
 from muck import *
 from typing import NamedTuple
 
-
-header = ('Country', 'Private Cost', 'Total Cost', 'Life Expectancy')
+header = ('Country', 'Private Cost', 'Total Cost', 'Life Expectancy', 'LE Year')
 
 class Row(NamedTuple):
   country: str
   private_cost: float
   total_cost: float
   expectancy: float
+  le_year: int
 
-rows = [Row(c, float(p), float(t), float(e)) for c, p, t, e in load('table.csv', header=header)]
+with load('table.csv', header=header) as reader:
+  rows = [Row(c, float(p), float(t), float(e), int(y)) for c, p, t, e, y in reader]

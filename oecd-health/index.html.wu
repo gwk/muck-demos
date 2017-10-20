@@ -87,11 +87,11 @@ This still leaves us with the choice between current or constant prices, and PPP
 
 We see the USA value as stated exactly in the article, using constant prices. This is encouraging, and suggests that we simply have to choose whether to use PPP. The only hits for constant price are Australia and Canada, using PPP. Our methodology here is questionable since we just picked an arbitrary "fudge factor" of +/- $500, but since this is a technical demonstration rather than a serious audit of the original we can move on. It is worth taking a moment though to speculate as to why our numbers are different. Since the USA value remains exact, it perhaps the discrepancy is due to changing exchange rates. This explanation is rather unsatisfactory though, because out of all the measure descriptions, I would expect costs for 2016 expressed in 2010 dollars not to change once calculated, so perhaps we are still missing something.
 
-In summary, we will use `HF == 'HF2HF3'`, `HC == 'HCTOT'`, `HP == 'HPTOT'`, and `Measure == 'VRPPPR'`.
+In summary, we will use `HF=='HF2HF3'`, `HC=='HCTOT'`, `HP=='HPTOT'`, and `Measure=='VRPPPR'`.
 
 ## Life Expectancy
 
-For life expectancies, the task is much simpler.
+For life expectancies, the task is a little simpler.
 
 ### VAR / Variable
 
@@ -104,14 +104,21 @@ We will use `EVIETOTA` / `Total population at birth`.
 ### UNIT / Measure
 
 <embed: titled=yes expectancies-measures.csv>
-Lastly, `EVIDUREV` / `Years` is the obvious choice.
+Similarly, `EVIDUREV` / `Years` is the obvious choice.
+
+### Latest Year
+
+Lastly, there is a problem that I did not discover until very late: life expectancy data is not available for 2016 across all countries. The best we can do is select the last year for which it is available:
+
+<embed: titled=yes expectancies-latest-year.csv.sql>
+<embed: titled=yes expectancies-latest-year.csv>
+
+We will have to join 'latest year' to the expectancy values in the final query.
 
 
 # The Table
 
-Now that we know which subset of the data we want, we can formulate a `JOIN` query to recreate the table. We use two `LEFT JOIN` clauses to effectively add additional columns to the query. First we join `expenditures` against itself, distinguishing between the two with the names `privateExpend` and `totalExpend`. This allows us to select the separate `HF2HF3` (private) and `HFTOT` (total) values, pair them by country, and show them in the same row. Then we join `expectancies` to do the same for the life expectancy values.
-
-Note: the first time I ran the query it used the 2016 data for life expectancies, and I found that only Chile and Mexico are listed for that year. Dropping back to 2015 gives complete results that matches the original table exactly.
+Now that we know which subset of the data we want, we can formulate a `JOIN` query to recreate the table. We use two `LEFT JOIN` clauses to effectively add additional columns to the query. First we join `expenditures` against itself, distinguishing between the two with the names `privateExpend` and `totalExpend`. This allows us to select the separate `HF2HF3` (private) and `HFTOT` (total) values, pair them by country, and show them in the same row. Then we join `expectancies` to do the same for the life expectancy values, choosing the latest year for each country.
 
 <embed: titled=yes table.csv.sql>
 <embed: titled=yes table.csv>
@@ -119,25 +126,21 @@ Note: the first time I ran the query it used the 2016 data for life expectancies
 
 # The Visualization
 
-The chart in the article is not a typical chart, so let's start off by rendering a more conventional XY scatterplot. Because we are going to try several visualizations, we will first factor out the data loading logic into a tiny python module (I actually did this after some amount of experimentation, for the sake of deduplicating code and clear presentation).
+The chart in the article is not a typical chart, so let's start off by rendering a more conventional XY scatterplot, showing both private and total expenditures. Because we are going to try several visualizations, we will first factor out the data loading logic into a tiny python module (I actually did this after some amount of experimentation, for the sake of deduplicating code and clear presentation).
 
 <embed: titled=yes chart_data.py>
 
-Let's build a scatterplot with <https://github.com/wireservice/leather leather>, a simple charting library for Python:
+Let's build a scatterplot with <https://github.com/wireservice/leather leather>, a simple charting library for Python. We add a little hack to make the country names show up as tooltips when the reader mouses over the dots:
 
-<embed: titled=yes scatterplot-leather.svg.py>
-<embed: titled=yes scatterplot-leather.svg>
+<embed: titled=yes scatterplot.svg.py>
+<embed: titled=yes scatterplot.svg>
 
-Looks good, but there does not appear to be any way to get text labels on the dots. Let's try <https://pygal.org pygal> instead:
+Now let's try to reproduce the original visualization. It is unusual because the lines do not represent data series; rather, each line represents a single `(expenditure, expectancy)` datapoint, and the slope of the line is what conveys magnitude visually. We could hunt around for a library to do this, but let's just draw it ourselves using raw SVG. To do this, we need to scale the values for each dimension and create a line with text at either endpoint.
 
-<embed: titled=yes scatterplot-pygal.svg.py>
-<embed: titled=yes scatterplot-pygal.svg>
+<embed: titled=yes vis.svg.py>
+<embed: titled=yes vis.svg>
 
-This gives us labels, but with no way to adjust the offsets it is very hard to read (furthermore, pygal creates interactive popups for the datapoints, but these don't work when the SVG is embedded into our HTML document). A little googling suggests that <http://matplotlib.org matplotlib> can do it, but installing that library can be quite onerous so we won't use it here.
-
-Let's try to reproduce the original visualization. It is atypical because the lines do not represent data series. Rather, each line represents a single `(expenditure, expectancy)` datapoint, and the slope of the line is what conveys magnitude visually.
-
-TODO.
+We could probably work on the styling a little more, but it's pretty close to the original.
 
 
 # Conclusion
@@ -150,4 +153,4 @@ Alternatively I could have left intrepid readers to download the OECD data thems
 
 The fact that our numbers only partially match those in the original article suggests that the data has indeed changed in the intervening three months, although we cannot be sure. In any case, the demonstration suggests just how difficult reproducible data journalism really is. If the dataset were proprietary, we would not have the option of publishing a copy at all.
 
-Finally, I would like to note that this project is neither a critique nor endorsement of the original article. While I wish the author had provided more specific information about which data was used, I suspect that the core problem has to do with a change in the dataset. The discrepancy between years queried for expenditures vs expectancies is entirely pragmatic, understandable, and in all likelihood negligible. Whether or not the comparison between private health expenditures and life expectancy truly summarizes the nature of the US health care problem is another question entirely.
+Finally, I would like to note that this project is neither a critique nor endorsement of the original article. While I wish the author had provided more specific information about which data was used, I suspect that the core problem has to do with an update to the dataset since the original publication date on 2017/07/07. The discrepancies around latest year of life expectancy data per country is slightly problematic; we could investigate further by looking at how much the life expectancies changed in prior years. Whether or not the comparison between private health expenditures and life expectancy truly summarizes the nature of the US health care problem is another question entirely.
