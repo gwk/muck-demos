@@ -1,4 +1,4 @@
-.open data.sqlite3
+.open 'data.sqlite3'
 .mode csv
 .headers on
 SELECT DISTINCT MEASURE, Measure_1, Country, Value, Year, Reference_Period AS 'Base Year'

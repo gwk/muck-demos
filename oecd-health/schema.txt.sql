@@ -1,2 +1,2 @@
-.open data.sqlite3
+.open 'data.sqlite3'
 .schema
