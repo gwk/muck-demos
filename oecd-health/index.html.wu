@@ -3,7 +3,7 @@ writeup v0
 
 # OECD Life Expectancy vs Private Health Costs
 
-This example attempts to reproduce the Guardian Datablog article <https://www.theguardian.com/us-news/datablog/2017/jul/02/us-healthcare-broken-system-one-chart America's broken healthcare system – in one simple chart> using the <https://github.com/gwk/muck Muck> build system.
+This example attempts to reproduce the Guardian Datablog article <https://www.theguardian.com/us-news/datablog/2017/jul/02/us-healthcare-broken-system-one-chart America's broken healthcare system – in one simple chart> using the <https://github.com/gwk/muck Muck> build system. The demo code can be found at <https://github.com/gwk/muck-demos/tree/master/oecd-health>, and the result is hosted at <https://gwk.github.io/muck/demos/oecd-health>.
 
 Creating a Muck project is as simple as creating an empty source document - in this case, `index.html.wu`. Simply run `muck -serve` from the project directory, and it will produce `index.html` from `index.html.wu`, generating any additional dependencies on an as-needed basis.
 
